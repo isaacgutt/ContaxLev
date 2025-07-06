@@ -153,7 +153,7 @@ export class GeneralLedger extends GeneralLedgerReport {
 
       // Use originalBalance for the "Total Balance" column
       if (fieldname === 'totalBalance') {
-        value = this.fyo.format(entry.originalBalance, FieldTypeEnum.Currency);
+        value = this.fyo.format(entry.balance, FieldTypeEnum.Currency);
       }
 
       row.cells.push({
@@ -205,36 +205,37 @@ export class GeneralLedger extends GeneralLedgerReport {
     let totalDebit = 0;
     let totalCredit = 0;
 
+    // Record to handle running balances by account
+    const accountBalances: Record<string, number> = {};
+
     for (const key of map.keys()) {
-      let balance = 0; // Initialize the cumulative balance for the account
       let debit = 0;
       let credit = 0;
 
       for (const entry of map.get(key)!) {
-        const originalBalance = balance; // Store the balance before the transaction
+        const currentBalance = accountBalances[entry.account] ?? 0;
 
+        // Set the balance before the transaction
+        entry.balance = currentBalance;
+
+        // Update the balance after the transaction
+        const diff = (entry.debit ?? 0) - (entry.credit ?? 0);
+        accountBalances[entry.account] = currentBalance + diff;
+
+        // Track totals for this group
         debit += entry.debit ?? 0;
         credit += entry.credit ?? 0;
-
-        const diff = (entry.debit ?? 0) - (entry.credit ?? 0);
-        balance += diff; // Update the cumulative balance
-
-        entry.originalBalance = originalBalance; // Set the original balance
-        entry.balance = balance; // Set the new cumulative balance
       }
 
-      /**
-       * Total row in case groupBy is used
-       */
+      // Group totals (optional)
       if (this.groupBy !== 'none') {
         map.get(key)?.push({
-          name: -1, // Italics
+          name: -1, // Italics for totals
           account: t`Total`,
           date: null,
           debit,
           credit,
-          balance, // Use the final cumulative balance for the total row
-          originalBalance: 0, // No original balance for total rows
+          balance: null, // Totals don't need balances
           referenceType: '',
           referenceName: '',
           party: '',
@@ -243,9 +244,6 @@ export class GeneralLedger extends GeneralLedgerReport {
         });
       }
 
-      /**
-       * Total debit and credit for the final row
-       */
       totalDebit += debit;
       totalCredit += credit;
     }
